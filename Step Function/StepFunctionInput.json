@@ -1,0 +1,10 @@
+{
+    "Args": [
+            "spark-submit",
+            "--deploy-mode",
+            "cluster",
+            "s3://remoteclazz-emr/script/pyspark_violations.py",
+            "s3://remoteclazz-emr/input/food_establishment_data.csv",
+            "s3://remoteclazz-emr/output/"
+        ]
+}

@@ -1,0 +1,101 @@
+{
+    "Comment": "Running Spark workloads on Amazon EMR",
+    "StartAt": "EMR CreateCluster",
+    "States": {
+      "EMR CreateCluster": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:createCluster.sync",
+        "Parameters": {
+          "Name": "spark-cluster-auto",
+          "ServiceRole": "EMR_DefaultRole",
+          "JobFlowRole": "EMR_EC2_DefaultRole",
+          "ReleaseLabel": "emr-6.4.0",
+          "Applications": [
+            {
+              "Name": "Spark"
+            }
+          ],
+          "LogUri": "s3n://remoteclazz-emr/logs/",
+          "VisibleToAllUsers": true,
+          "Instances": {
+            "KeepJobFlowAliveWhenNoSteps": true,
+            "InstanceFleets": [
+              {
+                "InstanceFleetType": "MASTER",
+                "Name": "Master",
+                "TargetOnDemandCapacity": 1,
+                "InstanceTypeConfigs": [
+                  {
+                    "InstanceType": "m3.xlarge"
+                  }
+                ]
+              },
+              {
+                "InstanceFleetType": "CORE",
+                "Name": "Core",
+                "TargetOnDemandCapacity": 2,
+                "InstanceTypeConfigs": [
+                  {
+                    "InstanceType": "m3.xlarge"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "Next": "EMR AddStep",
+        "ResultPath": "$.cluster"
+      },
+      "EMR AddStep": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:addStep.sync",
+        "Parameters": {
+          "ClusterId.$": "$.cluster.ClusterId",
+          "Step": {
+            "Name": "SparkStep",
+            "HadoopJarStep": {
+              "Jar": "command-runner.jar",
+              "Args.$": "$.Args"
+            }
+          }
+        },
+        "Next": "EMR TerminateCluster",
+        "ResultPath": "$.firstStep"
+      },
+      "EMR TerminateCluster": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:terminateCluster",
+        "Parameters": {
+          "ClusterId.$": "$.cluster.ClusterId"
+        },
+        "Next": "Lambda Invoke"
+      },
+      "Lambda Invoke": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::lambda:invoke",
+        "OutputPath": "$.Payload",
+        "Parameters": {
+          "FunctionName": "arn:aws:lambda:us-east-1:489096312478:function:CallGlueCrawler:$LATEST",
+          "Payload.$": "$"
+        },
+        "Retry": [
+          {
+            "ErrorEquals": [
+              "Lambda.ServiceException",
+              "Lambda.AWSLambdaException",
+              "Lambda.SdkClientException"
+            ],
+            "IntervalSeconds": 2,
+            "MaxAttempts": 6,
+            "BackoffRate": 2
+          }
+        ],
+        "Next": "Wait"
+      },
+      "Wait": {
+        "Type": "Wait",
+        "Seconds": 120,
+        "End": true
+      }
+    }
+  }
